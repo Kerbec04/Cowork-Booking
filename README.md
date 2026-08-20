@@ -3,6 +3,8 @@
 Sistema completo de reservas para um coworking fictício: clientes reservam salas em tempo real e a
 equipe gerencia espaços, reservas e pagamentos por um painel administrativo.
 
+![Listagem de espaços](docs/screenshots/espacos.jpg)
+
 ## Funcionalidades
 
 - **Cadastro e login** por e-mail/senha ou Google, com consentimento LGPD explícito no cadastro
@@ -13,6 +15,9 @@ equipe gerencia espaços, reservas e pagamentos por um painel administrativo.
 - **Minhas Reservas**: histórico do cliente, com cancelamento livre até 24h antes do início
 - **Painel administrativo**: CRUD de espaços, confirmação de pagamento presencial e gestão de
   todas as reservas
+
+<img src="docs/screenshots/reserva.jpg" width="49%" alt="Tela de reserva de um espaço" />
+<img src="docs/screenshots/admin.jpg" width="49%" alt="Painel administrativo — lista de reservas" />
 
 ## Stack técnica
 
