@@ -1,0 +1,275 @@
+// Prisma schema — coworking booking app
+// See CLAUDE.md sections 4 (data model) and 7 (security/LGPD) for the source spec.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Auth (NextAuth.js / Auth.js — @auth/prisma-adapter required models)
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  CLIENTE
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  nome          String
+  email         String    @unique
+  emailVerified DateTime?
+  telefone      String?
+  senhaHash     String? // null for OAuth-only accounts (Google). Never store plaintext passwords.
+  image         String?
+  tipo          UserRole  @default(CLIENTE)
+
+  // LGPD: explicit, timestamped consent captured at signup (section 7.2)
+  lgpdConsentAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  bookings       Booking[]
+  creditPackages CreditPackage[]
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+model Account {
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String?
+  access_token             String?
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String?
+  session_state            String?
+  refresh_token_expires_in Int?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Spaces & availability
+// ---------------------------------------------------------------------------
+
+enum SpaceType {
+  SALA_REUNIAO
+  SALA_PODCAST
+  SALA_ATENDIMENTO
+  ESTACAO_INDIVIDUAL
+}
+
+model Space {
+  id         String    @id @default(cuid())
+  nome       String
+  tipo       SpaceType
+  capacidade Int
+  precoHora  Decimal   @db.Decimal(10, 2) // preço cheio (antes do desconto)
+  descricao  String?
+  fotos      String[]  @default([])
+  ativo      Boolean   @default(true)
+  regrasUso  String?
+
+  // Desconto de boas-vindas: aplicado só na PRIMEIRA reserva não cancelada de
+  // cada cliente (qualquer espaço) — não é uma promoção corrente sobre todas as
+  // reservas. Elegibilidade é calculada em backend/services/bookings.ts. 0 =
+  // sem desconto de primeira reserva para este espaço.
+  descontoPrimeiraReserva Int @default(0)
+
+  // Add-on específico da Sala Caiena: opção de incluir equipamento de podcast
+  // por um valor adicional por hora (também sujeito ao desconto de primeira
+  // reserva, quando aplicável).
+  possuiAddonPodcast   Boolean  @default(false)
+  precoAddonPodcastHora Decimal? @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  availabilities Availability[]
+  blocks         SpaceBlock[]
+  bookings       Booking[]
+
+  @@map("spaces")
+}
+
+// Recurring weekly opening hours per space.
+model Availability {
+  id             String @id @default(cuid())
+  spaceId        String
+  diaSemana      Int // 0 = domingo .. 6 = sábado
+  horaAbertura   String // "08:00"
+  horaFechamento String // "20:00"
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+
+  @@index([spaceId])
+  @@map("availabilities")
+}
+
+// Exceptional blocks (manutenção, feriado etc.) layered on top of Availability.
+model SpaceBlock {
+  id      String   @id @default(cuid())
+  spaceId String
+  inicio  DateTime
+  fim     DateTime
+  motivo  String?
+
+  createdAt DateTime @default(now())
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+
+  @@index([spaceId, inicio, fim])
+  @@map("space_blocks")
+}
+
+// ---------------------------------------------------------------------------
+// Bookings & payments
+// ---------------------------------------------------------------------------
+
+enum BookingStatus {
+  PENDENTE
+  CONFIRMADA
+  CANCELADA
+  CONCLUIDA
+}
+
+model Booking {
+  id      String        @id @default(cuid())
+  userId  String
+  spaceId String
+  inicio  DateTime
+  fim     DateTime
+  status  BookingStatus @default(PENDENTE)
+
+  valorTotal Decimal @db.Decimal(10, 2) // já inclui desconto e addon de podcast, se houver
+
+  // Snapshot de que o addon de podcast (Sala Caiena) foi incluído nesta reserva.
+  podcastIncluido Boolean @default(false)
+
+  // Snapshot do % de desconto de primeira reserva efetivamente aplicado (0 se
+  // o cliente já tinha usado o desconto antes). Guardado aqui porque
+  // Space.descontoPrimeiraReserva pode mudar depois sem afetar reservas já feitas.
+  descontoAplicado Int @default(0)
+
+  criadoEm           DateTime  @default(now())
+  canceladoEm        DateTime?
+  motivoCancelamento String?
+
+  user    User     @relation(fields: [userId], references: [id])
+  space   Space    @relation(fields: [spaceId], references: [id])
+  payment Payment?
+
+  // Índice de apoio à checagem de conflito feita em backend/services/bookings.ts
+  // (createBooking), que roda dentro de uma transação serializable. Se o volume
+  // de reservas crescer muito, considerar reforçar com uma constraint EXCLUDE
+  // do Postgres (btree_gist) sobre (spaceId, tstzrange(inicio, fim)).
+  @@index([spaceId, inicio, fim])
+  @@map("bookings")
+}
+
+// MVP: payment happens in person at reception (no online gateway wired yet).
+// The gateway/status/transacaoIdExterno fields stay generic so an online
+// gateway (Mercado Pago/Stripe) can be added later without a schema change.
+enum PaymentGateway {
+  PRESENCIAL
+  MERCADO_PAGO
+  STRIPE
+}
+
+enum PaymentStatus {
+  PENDENTE
+  APROVADO
+  RECUSADO
+  ESTORNADO
+}
+
+model Payment {
+  id                 String         @id @default(cuid())
+  bookingId          String         @unique
+  gateway            PaymentGateway @default(PRESENCIAL)
+  status             PaymentStatus  @default(PENDENTE)
+  valor              Decimal        @db.Decimal(10, 2)
+  metodo             String? // dinheiro, cartão, pix — informado pela recepção
+  transacaoIdExterno String? // id externo do gateway, quando aplicável
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Credit packages (fase 2 — compra avulsa de horas, sem recorrência)
+// ---------------------------------------------------------------------------
+
+model CreditPackage {
+  id             String    @id @default(cuid())
+  userId         String
+  horasCompradas Decimal   @db.Decimal(6, 2)
+  horasUsadas    Decimal   @default(0) @db.Decimal(6, 2)
+  valorPago      Decimal   @db.Decimal(10, 2)
+  dataCompra     DateTime  @default(now())
+  validade       DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("credit_packages")
+}
+
+// ---------------------------------------------------------------------------
+// Audit log (LGPD — section 7.2)
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  acao       String
+  entidade   String
+  entidadeId String
+  ip         String?
+  timestamp  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entidade, entidadeId])
+  @@map("audit_logs")
+}

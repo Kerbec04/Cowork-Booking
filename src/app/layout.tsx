@@ -1,0 +1,35 @@
+import type { Metadata } from "next";
+import { Inter, Montserrat } from "next/font/google";
+import "./globals.css";
+
+import { Header } from "@/components/Header";
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+});
+
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Coworking Booking — Reservas de espaços",
+  description:
+    "Reserve salas de reunião, podcast, atendimento e estações de trabalho num coworking em tempo real, sem conflito de horários.",
+};
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
+  return (
+    <html
+      lang="pt-BR"
+      className={`${inter.variable} ${montserrat.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">
+        <Header />
+        {children}
+      </body>
+    </html>
+  );
+}

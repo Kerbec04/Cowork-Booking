@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/*
+ * Example brand palette — swap these tokens for your own to re-theme the app.
+ */
+:root {
+  --color-primary: #690000; /* vinho — heading text, primary actions */
+  --color-primary-dark: #4a0000;
+  --color-secondary: #ff761f; /* laranja — accent, highlights, CTAs */
+  --color-accent: #586b4c; /* verde oliva — secondary accent */
+  --color-accent-light: #6f885f;
+
+  --color-background: #f5efe9; /* creme — page background */
+  --color-background-alt: #e8d8c8; /* bege — section/card background */
+  --color-background-muted: #e5ddd5;
+
+  --color-foreground: #3d2b23; /* marrom escuro — body text */
+  --color-foreground-muted: #6f5235;
+
+  --color-white: #ffffff;
+  --color-border: #cfcfcf;
+}
+
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-primary-dark: var(--color-primary-dark);
+  --color-secondary: var(--color-secondary);
+  --color-accent: var(--color-accent);
+  --color-accent-light: var(--color-accent-light);
+  --color-background: var(--color-background);
+  --color-background-alt: var(--color-background-alt);
+  --color-background-muted: var(--color-background-muted);
+  --color-foreground: var(--color-foreground);
+  --color-foreground-muted: var(--color-foreground-muted);
+  --color-white: var(--color-white);
+  --color-border: var(--color-border);
+
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-montserrat);
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading), var(--font-sans), sans-serif;
+}
